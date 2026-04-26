@@ -1,0 +1,68 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id           String        @id @default(cuid())
+  name         String
+  email        String        @unique
+  passwordHash String
+  transactions Transaction[]
+  goals        Goal[]
+  monthlyPlans MonthlyPlan[]
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+}
+
+model Transaction {
+  id        String   @id @default(cuid())
+  title     String
+  amount    Decimal  @db.Decimal(10, 2)
+  type      String
+  category  String
+  date      DateTime
+  notes     String?
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Goal {
+  id           String   @id @default(cuid())
+  month        String
+  targetAmount Decimal  @db.Decimal(10, 2)
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([userId, month])
+}
+
+model MonthlyPlan {
+  id              String           @id @default(cuid())
+  month           String
+  expectedIncome  Decimal          @db.Decimal(10, 2)
+  userId          String
+  user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  budgetCategories BudgetCategory[]
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  @@unique([userId, month])
+}
+
+model BudgetCategory {
+  id        String      @id @default(cuid())
+  name      String
+  plannedAmount Decimal @db.Decimal(10, 2)
+  planId    String
+  plan      MonthlyPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+}
