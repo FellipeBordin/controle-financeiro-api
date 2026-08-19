@@ -1,41 +1,55 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { prisma } from "@/lib/prisma";
+
+import { corsHeaders } from "@/lib/cors";
 import { getUserFromAuthHeader } from "@/lib/get-user-from-token";
 import { moneyToNumber } from "@/lib/money";
-import { corsHeaders } from "@/lib/cors";
+import { prisma } from "@/lib/prisma";
 
 const transactionSchema = z.object({
   title: z.string().min(2, "Título deve ter pelo menos 2 caracteres"),
+
   amount: z.number().positive("Valor deve ser maior que zero"),
+
   type: z.enum(["income", "expense"]),
+
   category: z.string().min(2, "Categoria obrigatória"),
+
   date: z.string().datetime("Data inválida"),
+
   notes: z.string().optional(),
 });
 
-export async function OPTIONS() {
+export async function OPTIONS(req: Request) {
+  const origin = req.headers.get("origin");
+
   return new Response(null, {
     status: 204,
-    headers: corsHeaders(),
+    headers: corsHeaders(origin),
   });
 }
 
 export async function POST(req: Request) {
+  const origin = req.headers.get("origin");
+
   try {
     const authHeader = req.headers.get("authorization");
     const authUser = getUserFromAuthHeader(authHeader);
 
     if (!authUser) {
       return NextResponse.json(
-        { error: "Não autorizado" },
-        { status: 401, headers: corsHeaders() },
+        {
+          error: "Não autorizado",
+        },
+        {
+          status: 401,
+          headers: corsHeaders(origin),
+        },
       );
     }
 
     const body = await req.json().catch(() => null);
+
     const parsed = transactionSchema.safeParse(body);
 
     if (!parsed.success) {
@@ -44,7 +58,10 @@ export async function POST(req: Request) {
           error: "Dados inválidos",
           details: parsed.error.flatten(),
         },
-        { status: 400, headers: corsHeaders() },
+        {
+          status: 400,
+          headers: corsHeaders(origin),
+        },
       );
     }
 
@@ -65,32 +82,49 @@ export async function POST(req: Request) {
     return NextResponse.json(
       {
         message: "Transação criada com sucesso",
+
         transaction: {
           ...transaction,
           amount: moneyToNumber(transaction.amount),
         },
       },
-      { status: 201, headers: corsHeaders() },
+      {
+        status: 201,
+        headers: corsHeaders(origin),
+      },
     );
   } catch (error) {
     console.error("CREATE_TRANSACTION_ERROR", error);
 
     return NextResponse.json(
-      { error: "Erro interno ao criar transação" },
-      { status: 500, headers: corsHeaders() },
+      {
+        error: "Erro interno ao criar transação",
+      },
+      {
+        status: 500,
+        headers: corsHeaders(origin),
+      },
     );
   }
 }
 
 export async function GET(req: Request) {
+  const origin = req.headers.get("origin");
+
   try {
     const authHeader = req.headers.get("authorization");
+
     const authUser = getUserFromAuthHeader(authHeader);
 
     if (!authUser) {
       return NextResponse.json(
-        { error: "Não autorizado" },
-        { status: 401, headers: corsHeaders() },
+        {
+          error: "Não autorizado",
+        },
+        {
+          status: 401,
+          headers: corsHeaders(origin),
+        },
       );
     }
 
@@ -98,43 +132,54 @@ export async function GET(req: Request) {
       where: {
         userId: authUser.userId,
       },
+
       orderBy: {
         date: "desc",
       },
     });
 
-    const formattedTransactions = transactions.map((transaction: any) => ({
+    const formattedTransactions = transactions.map((transaction) => ({
       ...transaction,
+
       amount: moneyToNumber(transaction.amount),
     }));
 
     const totalIncome = formattedTransactions
-      .filter((transaction: any) => transaction.type === "income")
-      .reduce((sum: number, transaction: any) => sum + transaction.amount, 0);
+      .filter((transaction) => transaction.type === "income")
+      .reduce((sum, transaction) => sum + transaction.amount, 0);
 
     const totalExpense = formattedTransactions
-      .filter((transaction: any) => transaction.type === "expense")
-      .reduce((sum: number, transaction: any) => sum + transaction.amount, 0);
+      .filter((transaction) => transaction.type === "expense")
+      .reduce((sum, transaction) => sum + transaction.amount, 0);
 
     const balance = totalIncome - totalExpense;
 
     return NextResponse.json(
       {
         transactions: formattedTransactions,
+
         summary: {
           totalIncome,
           totalExpense,
           balance,
         },
       },
-      { headers: corsHeaders() },
+      {
+        status: 200,
+        headers: corsHeaders(origin),
+      },
     );
   } catch (error) {
     console.error("GET_TRANSACTIONS_ERROR", error);
 
     return NextResponse.json(
-      { error: "Erro interno ao buscar transações" },
-      { status: 500, headers: corsHeaders() },
+      {
+        error: "Erro interno ao buscar transações",
+      },
+      {
+        status: 500,
+        headers: corsHeaders(origin),
+      },
     );
   }
 }

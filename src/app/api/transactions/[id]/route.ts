@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { prisma } from "@/lib/prisma";
+
+import { corsHeaders } from "@/lib/cors";
 import { getUserFromAuthHeader } from "@/lib/get-user-from-token";
 import { moneyToNumber } from "@/lib/money";
-import { corsHeaders } from "@/lib/cors";
+import { prisma } from "@/lib/prisma";
 
 const updateTransactionSchema = z.object({
   title: z.string().min(2).optional(),
@@ -20,27 +21,39 @@ type RouteContext = {
   }>;
 };
 
-export async function OPTIONS() {
+export async function OPTIONS(req: Request) {
+  const origin = req.headers.get("origin");
+
   return new Response(null, {
     status: 204,
-    headers: corsHeaders(),
+    headers: corsHeaders(origin),
   });
 }
 
 export async function PUT(req: Request, context: RouteContext) {
+  const origin = req.headers.get("origin");
+
   try {
     const authHeader = req.headers.get("authorization");
+
     const authUser = getUserFromAuthHeader(authHeader);
 
     if (!authUser) {
       return NextResponse.json(
-        { error: "Não autorizado" },
-        { status: 401, headers: corsHeaders() },
+        {
+          error: "Não autorizado",
+        },
+        {
+          status: 401,
+          headers: corsHeaders(origin),
+        },
       );
     }
 
     const { id } = await context.params;
+
     const body = await req.json().catch(() => null);
+
     const parsed = updateTransactionSchema.safeParse(body);
 
     if (!parsed.success) {
@@ -49,7 +62,10 @@ export async function PUT(req: Request, context: RouteContext) {
           error: "Dados inválidos",
           details: parsed.error.flatten(),
         },
-        { status: 400, headers: corsHeaders() },
+        {
+          status: 400,
+          headers: corsHeaders(origin),
+        },
       );
     }
 
@@ -62,54 +78,97 @@ export async function PUT(req: Request, context: RouteContext) {
 
     if (!existingTransaction) {
       return NextResponse.json(
-        { error: "Transação não encontrada" },
-        { status: 404 },
+        {
+          error: "Transação não encontrada",
+        },
+        {
+          status: 404,
+          headers: corsHeaders(origin),
+        },
       );
     }
 
     const data = parsed.data;
 
     const updatedTransaction = await prisma.transaction.update({
-      where: { id },
+      where: {
+        id,
+      },
+
       data: {
-        ...(data.title !== undefined && { title: data.title }),
-        ...(data.amount !== undefined && { amount: data.amount }),
-        ...(data.type !== undefined && { type: data.type }),
-        ...(data.category !== undefined && { category: data.category }),
-        ...(data.date !== undefined && { date: new Date(data.date) }),
-        ...(data.notes !== undefined && { notes: data.notes }),
+        ...(data.title !== undefined && {
+          title: data.title,
+        }),
+
+        ...(data.amount !== undefined && {
+          amount: data.amount,
+        }),
+
+        ...(data.type !== undefined && {
+          type: data.type,
+        }),
+
+        ...(data.category !== undefined && {
+          category: data.category,
+        }),
+
+        ...(data.date !== undefined && {
+          date: new Date(data.date),
+        }),
+
+        ...(data.notes !== undefined && {
+          notes: data.notes,
+        }),
       },
     });
 
     return NextResponse.json(
       {
         message: "Transação atualizada com sucesso",
+
         transaction: {
           ...updatedTransaction,
+
           amount: moneyToNumber(updatedTransaction.amount),
         },
       },
-      { headers: corsHeaders() },
+      {
+        status: 200,
+        headers: corsHeaders(origin),
+      },
     );
   } catch (error) {
     console.error("UPDATE_TRANSACTION_ERROR", error);
 
     return NextResponse.json(
-      { error: "Erro interno ao atualizar transação" },
-      { status: 500, headers: corsHeaders() },
+      {
+        error: "Erro interno ao atualizar transação",
+      },
+      {
+        status: 500,
+        headers: corsHeaders(origin),
+      },
     );
   }
 }
 
 export async function DELETE(req: Request, context: RouteContext) {
+  const origin = req.headers.get("origin");
+
   try {
     const authHeader = req.headers.get("authorization");
+
     const authUser = getUserFromAuthHeader(authHeader);
 
     if (!authUser) {
       return NextResponse.json(
-        { error: "Não autorizado" },
-        { status: 401, headers: corsHeaders() },
+        {
+          error: "Não autorizado",
+        },
+        {
+          status: 401,
+          headers: corsHeaders(origin),
+        },
       );
     }
 
@@ -124,25 +183,42 @@ export async function DELETE(req: Request, context: RouteContext) {
 
     if (!transaction) {
       return NextResponse.json(
-        { error: "Lançamento não encontrado" },
-        { status: 404, headers: corsHeaders() },
+        {
+          error: "Lançamento não encontrado",
+        },
+        {
+          status: 404,
+          headers: corsHeaders(origin),
+        },
       );
     }
 
     await prisma.transaction.delete({
-      where: { id },
+      where: {
+        id,
+      },
     });
 
     return NextResponse.json(
-      { message: "Lançamento excluído com sucesso" },
-      { headers: corsHeaders() },
+      {
+        message: "Lançamento excluído com sucesso",
+      },
+      {
+        status: 200,
+        headers: corsHeaders(origin),
+      },
     );
   } catch (error) {
     console.error("DELETE_TRANSACTION_ERROR", error);
 
     return NextResponse.json(
-      { error: "Erro interno ao excluir lançamento" },
-      { status: 500, headers: corsHeaders() },
+      {
+        error: "Erro interno ao excluir lançamento",
+      },
+      {
+        status: 500,
+        headers: corsHeaders(origin),
+      },
     );
   }
 }

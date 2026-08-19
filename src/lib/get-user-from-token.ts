@@ -1,14 +1,11 @@
-import { verifyToken } from "@/lib/auth";
-
-type AuthUser = {
-  userId: string;
-  email: string;
-};
+import { type TokenPayload, verifyToken } from "@/lib/auth";
 
 export function getUserFromAuthHeader(
   authHeader: string | null,
-): AuthUser | null {
-  if (!authHeader) return null;
+): TokenPayload | null {
+  if (!authHeader) {
+    return null;
+  }
 
   const [type, token] = authHeader.split(" ");
 

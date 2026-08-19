@@ -1,10 +1,9 @@
-type TransactionInput = {
+export type TransactionInput = {
   title: string;
   amount: number;
   type: "income" | "expense";
   category: string;
 };
-
 type InsightSummary = {
   totalIncome: number;
   totalExpense: number;

@@ -1,46 +1,62 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { prisma } from "@/lib/prisma";
+
+import { corsHeaders } from "@/lib/cors";
 import { getUserFromAuthHeader } from "@/lib/get-user-from-token";
+import { buildInsightSummary, type TransactionInput } from "@/lib/insights";
 import { getMonthRange } from "@/lib/month";
 import { moneyToNumber } from "@/lib/money";
-import { buildInsightSummary } from "@/lib/insights";
 import { openai } from "@/lib/openai";
-import { corsHeaders } from "@/lib/cors";
+import { prisma } from "@/lib/prisma";
 
 const querySchema = z.object({
   month: z.string().regex(/^\d{4}-\d{2}$/, "Formato inválido. Use YYYY-MM"),
 });
 
-export async function OPTIONS() {
+export async function OPTIONS(req: Request) {
+  const origin = req.headers.get("origin");
+
   return new Response(null, {
     status: 204,
-    headers: corsHeaders(),
+    headers: corsHeaders(origin),
   });
 }
 
 export async function GET(req: Request) {
+  const origin = req.headers.get("origin");
+
   try {
     const authHeader = req.headers.get("authorization");
     const authUser = getUserFromAuthHeader(authHeader);
 
     if (!authUser) {
       return NextResponse.json(
-        { error: "Não autorizado" },
-        { status: 401, headers: corsHeaders() },
+        {
+          error: "Não autorizado",
+        },
+        {
+          status: 401,
+          headers: corsHeaders(origin),
+        },
       );
     }
 
     const { searchParams } = new URL(req.url);
     const month = searchParams.get("month");
 
-    const parsed = querySchema.safeParse({ month });
+    const parsed = querySchema.safeParse({
+      month,
+    });
 
     if (!parsed.success) {
       return NextResponse.json(
-        { error: "Parâmetro 'month' inválido. Use YYYY-MM" },
-        { status: 400, headers: corsHeaders() },
+        {
+          error: "Parâmetro 'month' inválido. Use YYYY-MM",
+        },
+        {
+          status: 400,
+          headers: corsHeaders(origin),
+        },
       );
     }
 
@@ -59,10 +75,20 @@ export async function GET(req: Request) {
       },
     });
 
-    const formattedTransactions = transactions.map((transaction: any) => ({
-      ...transaction,
-      amount: moneyToNumber(transaction.amount),
-    }));
+    const formattedTransactions: TransactionInput[] = transactions.map(
+      (transaction) => {
+      if (transaction.type !== "income" && transaction.type !== "expense") {
+        throw new Error(`Tipo de transação inválido: ${transaction.type}`);
+      }
+
+      return {
+        title: transaction.title,
+        amount: moneyToNumber(transaction.amount),
+        type: transaction.type,
+        category: transaction.category,
+      };
+      },
+    );
 
     if (formattedTransactions.length === 0) {
       return NextResponse.json(
@@ -72,7 +98,9 @@ export async function GET(req: Request) {
             "Ainda não há lançamentos neste mês. Cadastre receitas e despesas para receber um insight.",
           summary: null,
         },
-        { headers: corsHeaders() },
+        {
+          headers: corsHeaders(origin),
+        },
       );
     }
 
@@ -114,7 +142,9 @@ Dados do mês:
         insight,
         summary,
       },
-      { headers: corsHeaders() },
+      {
+        headers: corsHeaders(origin),
+      },
     );
   } catch (error) {
     console.error("AI_INSIGHTS_ERROR", error);
@@ -126,7 +156,10 @@ Dados do mês:
           "Seu resumo financeiro foi gerado no modo básico. Continue registrando receitas e despesas para acompanhar melhor seus gastos.",
         summary: null,
       },
-      { status: 200, headers: corsHeaders() },
+      {
+        status: 200,
+        headers: corsHeaders(origin),
+      },
     );
   }
 }

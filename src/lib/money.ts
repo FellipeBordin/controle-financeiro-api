@@ -1,14 +1,24 @@
-export function moneyToNumber(value: unknown): number {
-  if (typeof value === "number") return value;
-  if (typeof value === "string") return Number(value);
+type DecimalLike = {
+  toNumber: () => number;
+};
 
-  if (
-    typeof value === "object" &&
-    value !== null &&
-    "toNumber" in value &&
-    typeof (value as { toNumber?: unknown }).toNumber === "function"
-  ) {
-    return (value as { toNumber: () => number }).toNumber();
+export function moneyToNumber(value: unknown): number {
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : 0;
+  }
+
+  if (typeof value === "string") {
+    const number = Number(value);
+
+    return Number.isFinite(number) ? number : 0;
+  }
+
+  if (typeof value === "object" && value !== null && "toNumber" in value) {
+    const decimal = value as Partial<DecimalLike>;
+
+    if (typeof decimal.toNumber === "function") {
+      return decimal.toNumber();
+    }
   }
 
   return 0;

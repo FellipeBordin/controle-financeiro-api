@@ -5,11 +5,9 @@ export type TokenPayload = {
   email: string;
 };
 
-const JWT_SECRET = process.env.JWT_SECRET as string;
-
-if (!JWT_SECRET) {
+const JWT_SECRET: string = process.env.JWT_SECRET ?? (() => {
   throw new Error("JWT_SECRET não definido no .env");
-}
+})();
 
 export function generateToken(payload: TokenPayload) {
   return jwt.sign(payload, JWT_SECRET, {
@@ -17,6 +15,20 @@ export function generateToken(payload: TokenPayload) {
   });
 }
 
-export function verifyToken(token: string) {
-  return jwt.verify(token, JWT_SECRET) as TokenPayload;
+export function verifyToken(token: string): TokenPayload {
+  const decoded = jwt.verify(token, JWT_SECRET);
+
+  if (
+    typeof decoded === "object" &&
+    decoded !== null &&
+    typeof decoded.userId === "string" &&
+    typeof decoded.email === "string"
+  ) {
+    return {
+      userId: decoded.userId,
+      email: decoded.email,
+    };
+  }
+
+  throw new Error("Token inválido");
 }

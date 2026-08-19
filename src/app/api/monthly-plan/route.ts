@@ -1,32 +1,42 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { prisma } from "@/lib/prisma";
-import { getUserFromAuthHeader } from "@/lib/get-user-from-token";
+
 import { corsHeaders } from "@/lib/cors";
-import { moneyToNumber } from "@/lib/money";
+import { getUserFromAuthHeader } from "@/lib/get-user-from-token";
 import { getMonthRange } from "@/lib/month";
+import { moneyToNumber } from "@/lib/money";
+import { prisma } from "@/lib/prisma";
 
 const monthlyPlanSchema = z.object({
   month: z.string().regex(/^\d{4}-\d{2}$/, "Formato inválido. Use YYYY-MM"),
+
   expectedIncome: z.number().nonnegative("Receita prevista inválida"),
+
   categories: z.array(
     z.object({
       name: z.string().min(2, "Nome da categoria obrigatório"),
+
       plannedAmount: z.number().nonnegative("Valor planejado inválido"),
     }),
   ),
 });
 
-export async function OPTIONS() {
+const monthSchema = z
+  .string()
+  .regex(/^\d{4}-\d{2}$/, "Formato inválido. Use YYYY-MM");
+
+export async function OPTIONS(req: Request) {
+  const origin = req.headers.get("origin");
+
   return new Response(null, {
     status: 204,
-    headers: corsHeaders(),
+    headers: corsHeaders(origin),
   });
 }
 
 export async function POST(req: Request) {
+  const origin = req.headers.get("origin");
+
   try {
     const authHeader = req.headers.get("authorization");
     const authUser = getUserFromAuthHeader(authHeader);
@@ -34,7 +44,10 @@ export async function POST(req: Request) {
     if (!authUser) {
       return NextResponse.json(
         { error: "Não autorizado" },
-        { status: 401, headers: corsHeaders() },
+        {
+          status: 401,
+          headers: corsHeaders(origin),
+        },
       );
     }
 
@@ -47,7 +60,10 @@ export async function POST(req: Request) {
           error: "Dados inválidos",
           details: parsed.error.flatten(),
         },
-        { status: 400, headers: corsHeaders() },
+        {
+          status: 400,
+          headers: corsHeaders(origin),
+        },
       );
     }
 
@@ -71,15 +87,18 @@ export async function POST(req: Request) {
         where: {
           id: existingPlan.id,
         },
+
         data: {
           expectedIncome,
+
           budgetCategories: {
-            create: categories.map((category: any) => ({
+            create: categories.map((category) => ({
               name: category.name,
               plannedAmount: category.plannedAmount,
             })),
           },
         },
+
         include: {
           budgetCategories: true,
         },
@@ -88,18 +107,23 @@ export async function POST(req: Request) {
       return NextResponse.json(
         {
           message: "Planejamento atualizado com sucesso",
+
           plan: {
             ...updatedPlan,
+
             expectedIncome: moneyToNumber(updatedPlan.expectedIncome),
-            budgetCategories: updatedPlan.budgetCategories.map(
-              (category: any) => ({
-                ...category,
-                plannedAmount: moneyToNumber(category.plannedAmount),
-              }),
-            ),
+
+            budgetCategories: updatedPlan.budgetCategories.map((category) => ({
+              ...category,
+
+              plannedAmount: moneyToNumber(category.plannedAmount),
+            })),
           },
         },
-        { headers: corsHeaders() },
+        {
+          status: 200,
+          headers: corsHeaders(origin),
+        },
       );
     }
 
@@ -108,13 +132,15 @@ export async function POST(req: Request) {
         month,
         expectedIncome,
         userId: authUser.userId,
+
         budgetCategories: {
-          create: categories.map((category: any) => ({
+          create: categories.map((category) => ({
             name: category.name,
             plannedAmount: category.plannedAmount,
           })),
         },
       },
+
       include: {
         budgetCategories: true,
       },
@@ -123,64 +149,95 @@ export async function POST(req: Request) {
     return NextResponse.json(
       {
         message: "Planejamento criado com sucesso",
+
         plan: {
           ...plan,
+
           expectedIncome: moneyToNumber(plan.expectedIncome),
-          budgetCategories: plan.budgetCategories.map((category: any) => ({
+
+          budgetCategories: plan.budgetCategories.map((category) => ({
             ...category,
+
             plannedAmount: moneyToNumber(category.plannedAmount),
           })),
         },
       },
-      { status: 201, headers: corsHeaders() },
+      {
+        status: 201,
+        headers: corsHeaders(origin),
+      },
     );
   } catch (error) {
     console.error("SAVE_MONTHLY_PLAN_ERROR", error);
 
     return NextResponse.json(
-      { error: "Erro interno ao salvar planejamento" },
-      { status: 500, headers: corsHeaders() },
+      {
+        error: "Erro interno ao salvar planejamento",
+      },
+      {
+        status: 500,
+        headers: corsHeaders(origin),
+      },
     );
   }
 }
 
 export async function GET(req: Request) {
+  const origin = req.headers.get("origin");
+
   try {
     const authHeader = req.headers.get("authorization");
+
     const authUser = getUserFromAuthHeader(authHeader);
 
     if (!authUser) {
       return NextResponse.json(
-        { error: "Não autorizado" },
-        { status: 401, headers: corsHeaders() },
+        {
+          error: "Não autorizado",
+        },
+        {
+          status: 401,
+          headers: corsHeaders(origin),
+        },
       );
     }
 
     const { searchParams } = new URL(req.url);
     const month = searchParams.get("month");
 
-    if (!month || !/^\d{4}-\d{2}$/.test(month)) {
+    const parsedMonth = monthSchema.safeParse(month);
+
+    if (!parsedMonth.success) {
       return NextResponse.json(
-        { error: "Parâmetro 'month' inválido. Use YYYY-MM" },
-        { status: 400, headers: corsHeaders() },
+        {
+          error: "Parâmetro 'month' inválido. Use YYYY-MM",
+        },
+        {
+          status: 400,
+          headers: corsHeaders(origin),
+        },
       );
     }
+
+    const validatedMonth = parsedMonth.data;
 
     const plan = await prisma.monthlyPlan.findFirst({
       where: {
         userId: authUser.userId,
-        month,
+        month: validatedMonth,
       },
+
       include: {
         budgetCategories: true,
       },
     });
 
-    const { startDate, endDate } = getMonthRange(month);
+    const { startDate, endDate } = getMonthRange(validatedMonth);
 
     const transactions = await prisma.transaction.findMany({
       where: {
         userId: authUser.userId,
+
         date: {
           gte: startDate,
           lt: endDate,
@@ -188,41 +245,42 @@ export async function GET(req: Request) {
       },
     });
 
-    const formattedTransactions = transactions.map((transaction: any) => ({
-      ...transaction,
+    const formattedTransactions = transactions.map((transaction) => ({
+      type: transaction.type,
+      category: transaction.category,
       amount: moneyToNumber(transaction.amount),
     }));
 
     const realIncome = formattedTransactions
-      .filter((transaction: any) => transaction.type === "income")
-      .reduce((sum: number, transaction: any) => sum + transaction.amount, 0);
+      .filter((transaction) => transaction.type === "income")
+      .reduce((sum, transaction) => sum + transaction.amount, 0);
 
     const realExpense = formattedTransactions
-      .filter((transaction: any) => transaction.type === "expense")
-      .reduce((sum: number, transaction: any) => sum + transaction.amount, 0);
+      .filter((transaction) => transaction.type === "expense")
+      .reduce((sum, transaction) => sum + transaction.amount, 0);
 
     const realBalance = realIncome - realExpense;
 
     const formattedPlan = plan
       ? {
           ...plan,
+
           expectedIncome: moneyToNumber(plan.expectedIncome),
-          budgetCategories: plan.budgetCategories.map((category: any) => {
+
+          budgetCategories: plan.budgetCategories.map((category) => {
             const plannedAmount = moneyToNumber(category.plannedAmount);
 
             const realAmount = formattedTransactions
               .filter(
-                (transaction: any) =>
+                (transaction) =>
                   transaction.type === "expense" &&
                   transaction.category === category.name,
               )
-              .reduce(
-                (sum: number, transaction: any) => sum + transaction.amount,
-                0,
-              );
+              .reduce((sum, transaction) => sum + transaction.amount, 0);
 
             return {
               ...category,
+
               plannedAmount,
               realAmount,
               difference: plannedAmount - realAmount,
@@ -234,18 +292,20 @@ export async function GET(req: Request) {
 
     const plannedExpense =
       formattedPlan?.budgetCategories.reduce(
-        (sum: number, category: any) => sum + category.plannedAmount,
+        (sum, category) => sum + category.plannedAmount,
         0,
       ) ?? 0;
 
     const expectedIncome = formattedPlan?.expectedIncome ?? 0;
+
     const plannedBalance = expectedIncome - plannedExpense;
 
     return NextResponse.json(
       {
         plan: formattedPlan,
+
         summary: {
-          month,
+          month: validatedMonth,
           expectedIncome,
           plannedExpense,
           plannedBalance,
@@ -257,57 +317,93 @@ export async function GET(req: Request) {
           balanceDifference: realBalance - plannedBalance,
         },
       },
-      { headers: corsHeaders() },
+      {
+        status: 200,
+        headers: corsHeaders(origin),
+      },
     );
   } catch (error) {
     console.error("GET_MONTHLY_PLAN_ERROR", error);
 
     return NextResponse.json(
-      { error: "Erro interno ao buscar planejamento" },
-      { status: 500, headers: corsHeaders() },
+      {
+        error: "Erro interno ao buscar planejamento",
+      },
+      {
+        status: 500,
+        headers: corsHeaders(origin),
+      },
     );
   }
 }
 
 export async function DELETE(req: Request) {
+  const origin = req.headers.get("origin");
+
   try {
     const authHeader = req.headers.get("authorization");
+
     const authUser = getUserFromAuthHeader(authHeader);
 
     if (!authUser) {
       return NextResponse.json(
-        { error: "Não autorizado" },
-        { status: 401, headers: corsHeaders() },
+        {
+          error: "Não autorizado",
+        },
+        {
+          status: 401,
+          headers: corsHeaders(origin),
+        },
       );
     }
 
     const { searchParams } = new URL(req.url);
+
     const month = searchParams.get("month");
 
-    if (!month) {
+    const parsedMonth = monthSchema.safeParse(month);
+
+    if (!parsedMonth.success) {
       return NextResponse.json(
-        { error: "Mês obrigatório" },
-        { status: 400, headers: corsHeaders() },
+        {
+          error: "Parâmetro 'month' inválido. Use YYYY-MM",
+        },
+        {
+          status: 400,
+          headers: corsHeaders(origin),
+        },
       );
     }
+
+    const validatedMonth = parsedMonth.data;
 
     await prisma.monthlyPlan.deleteMany({
       where: {
         userId: authUser.userId,
-        month,
+        month: validatedMonth,
       },
     });
 
     return NextResponse.json(
-      { message: "Planejamento excluído" },
-      { headers: corsHeaders() },
+      {
+        message: "Planejamento excluído",
+      },
+      {
+        status: 200,
+        headers: corsHeaders(origin),
+      },
     );
   } catch (error) {
     console.error("DELETE_MONTHLY_PLAN_ERROR", error);
 
     return NextResponse.json(
-      { error: "Erro ao excluir planejamento" },
-      { status: 500, headers: corsHeaders() },
+      {
+        error: "Erro ao excluir planejamento",
+      },
+      {
+        status: 500,
+        headers: corsHeaders(origin),
+      },
     );
   }
 }
