@@ -6,8 +6,8 @@ const allowedOrigins = [
   "http://localhost:3000",
   "http://localhost:19006",
   "http://192.168.18.8:8081",
+  "https://financontrol-five.vercel.app",
 ];
-
 export function middleware(req: NextRequest) {
   const origin = req.headers.get("origin");
 

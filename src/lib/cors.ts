@@ -1,4 +1,9 @@
-const allowedOrigins = ["http://localhost:8081", "http://localhost:3000"];
+const allowedOrigins = [
+  "http://localhost:8081",
+  "http://localhost:3000",
+  "http://192.168.18.8:8081",
+  "https://financontrol-five.vercel.app",
+];
 
 export function corsHeaders(origin?: string | null) {
   const headers: Record<string, string> = {
